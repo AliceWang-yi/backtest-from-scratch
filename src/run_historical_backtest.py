@@ -2,6 +2,10 @@
 
 import pandas as pd
 
+from src.annual_returns import (
+    calculate_annual_returns,
+    save_annual_returns,
+)
 from src.backtest_summary import (
     build_backtest_summary,
     save_backtest_summary,
@@ -16,8 +20,12 @@ from src.trade_statistics import calculate_trade_statistics
 
 PRICE_PATH = Path("data/processed/510300_unadjusted.csv")
 DIVIDEND_PATH = Path("data/dividends_510300.csv")
+
 SUMMARY_OUTPUT_PATH = Path(
     "outputs/tables/backtest_summary.csv"
+)
+ANNUAL_RETURNS_OUTPUT_PATH = Path(
+    "outputs/tables/annual_returns.csv"
 )
 
 SPLIT_DATE = "2021-01-01"
@@ -178,8 +186,21 @@ def main() -> None:
         SUMMARY_OUTPUT_PATH,
     )
 
+    annual_returns = calculate_annual_returns(
+        full_result
+    )
+
+    save_annual_returns(
+        annual_returns,
+        ANNUAL_RETURNS_OUTPUT_PATH,
+    )
+
     print(
         f"\nSaved summary to: {SUMMARY_OUTPUT_PATH}"
+    )
+    print(
+        "Saved annual returns to:",
+        ANNUAL_RETURNS_OUTPUT_PATH,
     )
 
 
