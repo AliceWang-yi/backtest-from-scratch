@@ -1,128 +1,687 @@
-\# Backtest from Scratch
+# 基于沪深300ETF的可复现量化回测框架
 
+本项目从零实现一个基础但完整的日频量化回测流程，研究标的为沪深300ETF华泰柏瑞（510300）。
 
+项目重点不是证明某个均线策略具有稳定盈利能力，而是展示一个初级量化研究项目应具备的基本规范，包括：
 
-A beginner-friendly implementation of a basic quantitative backtesting workflow using fixed local price data.
+* 固定历史数据快照；
+* 明确价格与收益口径；
+* 处理现金分红；
+* 避免未来数据泄漏；
+* 纳入换手率和交易成本；
+* 按时间顺序划分样本内与样本外；
+* 进行参数敏感性和成本敏感性分析；
+* 使用单元测试验证核心回测逻辑；
+* 保存可复核、可重新生成的结果表和图表。
 
+## 1. 项目简介
 
+本项目使用 Python 和 Pandas 构建一个基于移动平均线的日频择时策略，并与买入持有基准进行比较。
 
-\## Project Goals
-
-
-
-\* Validate local historical price data
-
-\* Calculate daily and cumulative returns
-
-\* Build a moving-average strategy
-
-\* Avoid look-ahead bias with `shift(1)`
-
-\* Include turnover and transaction costs
-
-\* Compare the strategy with buy-and-hold
-
-\* Calculate basic performance metrics
-
-\* Generate equity curve and drawdown charts
-
-\* Verify core logic with unit tests
-
-
-
-\## Project Structure
-
-
+固定策略参数为：
 
 ```text
-
-backtest-from-scratch/
-
-├── data/
-
-├── outputs/
-
-│   └── figures/
-
-├── src/
-
-├── tests/
-
-├── README.md
-
-├── requirements.txt
-
-└── .gitignore
-
+短期均线：20 个交易日
+长期均线：60 个交易日
+单边交易成本：10 bps
+样本切分日期：2021-01-01
 ```
 
+策略本身较为简单，主要用于检验回测流程是否正确、数据口径是否清晰，以及研究结果是否能够复现。
 
+## 2. 研究问题
 
-\## Installation
+本项目主要回答以下问题：
 
+1. 如何使用不复权价格构造包含现金分红的总收益序列？
+2. 如何正确对齐交易信号与实际持仓，避免未来数据泄漏？
+3. 均线策略在样本内和样本外的表现是否一致？
+4. 不同均线参数下的结果是否稳定？
+5. 交易成本对策略结果有多大影响？
+6. 结果能否通过固定数据、脚本、测试和输出文件进行复现？
 
+## 3. 数据说明
+
+### 3.1 研究标的
+
+```text
+名称：沪深300ETF华泰柏瑞
+代码：510300
+市场：上海证券交易所
+频率：日频
+```
+
+### 3.2 数据来源
+
+历史行情通过 AKShare 获取，底层数据来源为东方财富。
+
+本项目固定使用不复权历史价格，不在每次运行时自动重新下载，以避免数据源后续修订导致回测结果发生变化。
+
+请求日期范围：
+
+```text
+2012-01-01 至 2025-12-31
+```
+
+实际数据范围：
+
+```text
+2012-05-28 至 2025-12-31
+```
+
+数据下载日期：
+
+```text
+2026-07-13
+```
+
+原始数据文件：
+
+```text
+data/raw/510300_unadjusted_20120101_20251231_20260713.csv
+```
+
+标准化数据文件：
+
+```text
+data/processed/510300_unadjusted.csv
+```
+
+标准化字段：
+
+```text
+Date, Open, High, Low, Close, Volume
+```
+
+原始数据 SHA256：
+
+```text
+BD41191E8D6C1659C6E7F27F145EFF5E298E6381B6CFEA6AFDCFA43C97919238
+```
+
+### 3.3 数据质量检查
+
+已检查以下项目：
+
+* 缺失值；
+* 重复日期；
+* 日期排序；
+* 价格是否为正；
+* 成交量是否非负；
+* OHLC 价格关系是否合理。
+
+当前固定数据中：
+
+```text
+缺失值：0
+重复日期：0
+```
+
+## 4. 回测假设
+
+本项目采用以下基础假设：
+
+* 使用日线数据；
+* 使用收盘价构造收益和信号价格；
+* 策略仓位只有空仓和全仓两种状态；
+* 不允许卖空；
+* 不使用杠杆；
+* 分红在除息日计入总收益；
+* 分红视为即时再投资；
+* 暂不考虑分红税费；
+* 暂不考虑滑点、冲击成本和成交量约束；
+* 每次仓位变化按照固定比例收取交易成本；
+* 不根据样本外结果反复调参。
+
+## 5. 策略逻辑
+
+策略使用短期和长期移动平均线进行择时。
+
+信号定义：
+
+```python
+signal = (short_ma > long_ma).astype(int)
+```
+
+当短期均线高于长期均线时，信号为 1；否则信号为 0。
+
+实际持仓使用前一交易日信号：
+
+```python
+position = signal.shift(1).fillna(0)
+```
+
+策略毛收益：
+
+```python
+strategy_return = position * selected_return
+```
+
+换手率：
+
+```python
+turnover = position.diff().abs().fillna(0.0)
+```
+
+交易成本：
+
+```python
+cost = turnover * transaction_cost
+```
+
+策略净收益：
+
+```python
+net_strategy_return = strategy_return - cost
+```
+
+正式历史回测使用：
+
+```python
+return_column="total_return"
+signal_price_column="total_return_equity"
+```
+
+即：
+
+* 使用总收益率作为策略收益来源；
+* 使用总收益累计净值计算均线信号。
+
+## 6. 时间对齐与未来数据泄漏
+
+本项目使用：
+
+```python
+position = signal.shift(1)
+```
+
+避免在同一个交易日使用收盘后才能得到的均线信号，同时获取该交易日的完整收益。
+
+具体时间顺序为：
+
+1. 第 (t) 日收盘后，根据截至第 (t) 日的数据计算均线信号；
+2. 第 (t+1) 日使用该信号对应的仓位；
+3. 第 (t+1) 日收益由该仓位获得。
+
+因此，策略不会使用未来信息决定当前持仓。
+
+## 7. 分红与总收益口径
+
+由于研究数据使用不复权价格，ETF 在除息日会出现由现金分红造成的机械价格下跌。
+
+如果只使用收盘价涨跌计算收益，会把分红错误地识别为投资损失。
+
+本项目使用现金分红文件：
+
+```text
+data/dividends_510300.csv
+```
+
+价格收益率：
+
+```python
+price_return = Close / previous_close - 1
+```
+
+总收益率：
+
+```python
+total_return = (
+    (Close + DividendPerShare)
+    / previous_close
+    - 1
+)
+```
+
+总收益累计净值：
+
+```python
+total_return_equity = (
+    1 + total_return
+).cumprod()
+```
+
+该处理方式等价于现金分红在除息日计入收益，并立即进行再投资。
+
+买入持有基准和均线策略均使用同一套总收益口径。
+
+## 8. 交易成本
+
+固定回测使用：
+
+```text
+transaction_cost = 0.001
+```
+
+表示仓位每变化 1 个单位，收取 0.1%，即 10 bps 单边成本。
+
+完整的一次买入和卖出：
+
+```text
+0 → 1 → 0
+```
+
+对应的总成本约为：
+
+```text
+20 bps
+```
+
+当前输出中的累计交易成本，是每日成本率的简单加总，应理解为：
+
+```text
+累计交易成本率
+```
+
+或：
+
+```text
+累计成本扣减
+```
+
+它不是货币金额。
+
+## 9. 样本内与样本外
+
+项目按时间顺序划分数据：
+
+```text
+样本内：
+2012-05-28 至 2020-12-31
+
+样本外：
+2021-01-04 至 2025-12-31
+```
+
+实现时先在完整时间序列上计算：
+
+* 移动平均线；
+* 交易信号；
+* 实际持仓；
+* 策略收益；
+* 交易成本。
+
+然后再按日期划分样本内和样本外。
+
+这样可以确保：
+
+* 样本外继承此前历史均线；
+* 样本外继承切分日前已经形成的持仓；
+* 不会在样本外开始时重新经历长期均线预热期；
+* 不会人为重置策略状态。
+
+展示单独区间净值时，使用：
+
+```text
+区间归一化净值
+= 原始累计净值
+÷ 区间第一天原始累计净值
+```
+
+该操作只改变图表或结果展示的起始基准，不重新计算收益率，也不改变绩效指标。
+
+## 10. 参数与成本敏感性
+
+### 10.1 参数敏感性
+
+比较以下均线参数：
+
+```text
+10 / 40
+20 / 60
+30 / 90
+50 / 120
+```
+
+固定单边交易成本：
+
+```text
+10 bps
+```
+
+主要观察：
+
+* 年化收益；
+* 年化波动率；
+* 夏普比率；
+* 最大回撤；
+* 平均持仓比例；
+* 总换手率；
+* 年化换手率。
+
+结果显示：
+
+* 参数表现并不稳定；
+* 样本内表现较好的参数，样本外不一定较好；
+* 更短周期的参数通常产生更高换手率；
+* 不能根据样本外结果挑选所谓最优参数。
+
+### 10.2 成本敏感性
+
+固定均线参数：
+
+```text
+20 / 60
+```
+
+比较以下单边成本：
+
+```text
+0 bps
+5 bps
+10 bps
+20 bps
+```
+
+结果显示：
+
+* 交易成本越高，策略年化收益和夏普越低；
+* 换手率由交易信号决定，不随成本参数变化；
+* 累计成本扣减与单位交易成本近似线性增加；
+* 在样本外本身表现较弱时，交易成本会进一步降低策略结果。
+
+## 11. 主要结果
+
+固定参数：
+
+```text
+短期均线：20
+长期均线：60
+单边成本：10 bps
+```
+
+### 11.1 全样本
+
+```text
+数据范围：2012-05-28 至 2025-12-31
+交易日数量：3307
+
+策略年化收益：1.95%
+策略年化波动率：15.68%
+策略夏普比率：0.20
+策略最大回撤：-48.03%
+
+基准年化收益：6.38%
+基准年化波动率：22.32%
+基准夏普比率：0.39
+基准最大回撤：-45.44%
+```
+
+区间归一化最终净值：
+
+```text
+策略：1.2883
+基准：2.2519
+```
+
+交易统计：
+
+```text
+买入次数：35
+卖出次数：35
+完整交易次数：35
+平均持仓比例：52.46%
+在场交易日：1735
+总换手率：70
+年化换手率：5.3341
+累计成本扣减：0.0700
+```
+
+### 11.2 样本内
+
+```text
+数据范围：2012-05-28 至 2020-12-31
+交易日数量：2095
+
+策略年化收益：5.53%
+策略年化波动率：17.47%
+策略夏普比率：0.40
+策略最大回撤：-41.90%
+
+基准年化收益：10.51%
+基准年化波动率：24.39%
+基准夏普比率：0.53
+基准最大回撤：-45.44%
+```
+
+区间归一化最终净值：
+
+```text
+策略：1.5641
+基准：2.2960
+```
+
+### 11.3 样本外
+
+```text
+数据范围：2021-01-04 至 2025-12-31
+交易日数量：1212
+
+策略年化收益：-3.95%
+策略年化波动率：11.97%
+策略夏普比率：-0.28
+策略最大回撤：-41.38%
+
+基准年化收益：-0.40%
+基准年化波动率：18.19%
+基准夏普比率：0.07
+基准最大回撤：-42.18%
+```
+
+区间归一化最终净值：
+
+```text
+策略：0.8164
+基准：0.9721
+```
+
+样本外结果明显弱于样本内，说明该策略在不同市场阶段下并不稳定。
+
+本项目不能据此得出均线策略具有持续超额收益能力的结论。
+
+## 12. 输出结果
+
+正式结果表：
+
+```text
+outputs/tables/
+├── annual_returns.csv
+├── backtest_summary.csv
+├── cost_sensitivity.csv
+└── parameter_sensitivity.csv
+```
+
+正式图表：
+
+```text
+outputs/figures/
+├── historical_equity_curve.png
+├── historical_drawdown.png
+├── parameter_sensitivity.png
+└── cost_sensitivity.png
+```
+
+所有表格和图表均可通过代码重新生成。
+
+## 13. 运行方法
+
+### 13.1 创建虚拟环境
 
 ```powershell
-
 python -m venv .venv
+```
 
-.venv\\Scripts\\Activate.ps1
+### 13.2 激活虚拟环境
 
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+### 13.3 安装依赖
+
+```powershell
 python -m pip install -r requirements.txt
-
 ```
 
-
-
-\## Run
-
-
-
-Validate the data:
-
-
+### 13.4 验证正式历史数据
 
 ```powershell
-
-python -m src.validate\_data
-
+python -m src.validate_data
 ```
 
-
-
-Run the moving-average backtest:
-
-
+### 13.5 验证分红数据
 
 ```powershell
-
-python -m src.moving\_average\_strategy
-
+python -m src.validate_dividends
 ```
 
-
-
-Generate figures:
-
-
+### 13.6 运行正式历史回测
 
 ```powershell
-
-python -m src.plot\_results
-
+python -m src.run_historical_backtest
 ```
 
+该命令会生成：
 
+```text
+outputs/tables/backtest_summary.csv
+outputs/tables/annual_returns.csv
+```
 
-Run tests:
-
-
+### 13.7 运行参数敏感性分析
 
 ```powershell
+python -m src.parameter_sensitivity
+```
 
+### 13.8 运行交易成本敏感性分析
+
+```powershell
+python -m src.cost_sensitivity
+```
+
+### 13.9 生成正式图表
+
+```powershell
+python -m src.plot_results
+```
+
+### 13.10 运行全部测试
+
+```powershell
 python -m pytest
-
 ```
 
+## 14. 单元测试
 
+当前项目包含 50 个单元测试，覆盖：
 
+* 日收益率计算；
+* 累计净值复利；
+* 持仓滞后一日；
+* 换手率；
+* 交易成本；
+* 总收益率；
+* 显式收益率列；
+* 显式信号价格列；
+* 参数合法性；
+* 样本时间划分；
+* 空样本检查；
+* 交易行为统计；
+* 成本敏感性；
+* 参数敏感性；
+* 区间净值归一化；
+* 回测汇总表；
+* 年度收益复利；
+* 年度超额收益；
+* CSV 保存。
+
+运行结果：
+
+```text
+50 passed
+```
+
+## 15. 项目结构
+
+```text
+backtest-from-scratch/
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   ├── dividends_510300.csv
+│   ├── README.md
+│   └── sample_prices.csv
+├── outputs/
+│   ├── figures/
+│   └── tables/
+├── src/
+│   ├── annual_returns.py
+│   ├── backtest_summary.py
+│   ├── calculate_returns.py
+│   ├── compare_total_return.py
+│   ├── cost_sensitivity.py
+│   ├── download_historical_data.py
+│   ├── equity_normalization.py
+│   ├── inspect_price_jumps.py
+│   ├── moving_average_strategy.py
+│   ├── parameter_sensitivity.py
+│   ├── performance.py
+│   ├── plot_results.py
+│   ├── prepare_historical_data.py
+│   ├── report.py
+│   ├── run_historical_backtest.py
+│   ├── split_sample.py
+│   ├── total_return.py
+│   ├── trade_statistics.py
+│   ├── validate_data.py
+│   └── validate_dividends.py
+├── tests/
+├── .gitignore
+├── README.md
+└── requirements.txt
+```
+
+## 16. 局限性
+
+本项目仍存在以下局限：
+
+* 只研究单一 ETF；
+* 只研究单一移动平均策略；
+* 参数组数量有限；
+* 未进行滚动样本或 walk-forward 分析；
+* 未建立严格的逐笔交易账本；
+* 完整交易次数使用区间级近似定义；
+* 未统计胜率、盈亏比和平均持有期；
+* 未考虑滑点、冲击成本和成交量限制；
+* 未考虑分红税费；
+* 未考虑 ETF 跟踪误差；
+* 未与更多基准或其他资产进行比较；
+* 研究结论不构成投资建议。
+
+## 17. 可进一步改进方向
+
+后续可以在不改变当前研究主线的前提下改进：
+
+* 建立逐笔交易账本；
+* 增加平均持有期、胜率和盈亏比；
+* 增加滚动样本和 walk-forward 检验；
+* 增加更严格的数据异常检查；
+* 比较不同市场阶段；
+* 研究滑点和冲击成本；
+* 增加更多可解释的基础策略作为对照；
+* 完善自动化研究报告输出。
+
+## 18. 研究结论
+
+固定的 20/60 均线策略在样本内取得了正收益，但整体表现低于买入持有基准。
+
+进入样本外后，策略年化收益和夏普比率均转为负值，说明样本内观察到的表现没有稳定延续。
+
+参数敏感性结果显示，不同均线组合的样本外表现差异较大，样本内表现更好并不意味着样本外表现更好。
+
+成本敏感性结果显示，交易成本会持续侵蚀策略收益，且换手率越高的参数组合越容易受到成本影响。
+
+因此，本项目不能证明移动平均策略对沪深300ETF具有稳定的预测能力或持续超额收益。
+
+本项目的主要价值在于构建了一个口径明确、避免未来数据泄漏、包含分红和交易成本、支持样本内外分析、具有单元测试并能够复现结果的基础量化回测框架。
