@@ -10,12 +10,37 @@ def run_moving_average_strategy(
     long_window: int = 3,
     transaction_cost: float = 0.001,
     return_column: str | None = None,
+    signal_price_column: str = "Close",
 ) -> pd.DataFrame:
     result = df.copy()
     result = result.sort_values("Date").reset_index(drop=True)
 
-    result["short_ma"] = result["Close"].rolling(short_window).mean()
-    result["long_ma"] = result["Close"].rolling(long_window).mean()
+    if signal_price_column not in result.columns:
+        raise ValueError(
+            f"信号价格列不存在: {signal_price_column}"
+        )
+
+    if short_window <= 0:
+        raise ValueError("短期均线窗口必须为正整数")
+
+    if long_window <= 0:
+        raise ValueError("长期均线窗口必须为正整数")
+
+    if short_window >= long_window:
+        raise ValueError("短期均线窗口必须小于长期均线窗口")
+
+    if transaction_cost < 0:
+        raise ValueError("交易成本不能为负数")
+
+    signal_price = result[signal_price_column]
+
+    result["short_ma"] = signal_price.rolling(
+        short_window
+    ).mean()
+
+    result["long_ma"] = signal_price.rolling(
+        long_window
+    ).mean()
 
     result["signal"] = (
         result["short_ma"] > result["long_ma"]
@@ -40,6 +65,7 @@ def run_moving_average_strategy(
         selected_return = result[return_column]
 
     result["buy_hold_return"] = selected_return
+
     result["buy_hold_equity"] = (
         1 + result["buy_hold_return"]
     ).cumprod()
@@ -110,3 +136,4 @@ if __name__ == "__main__":
 
     print("\nBuy-and-hold metrics:")
     print(benchmark_metrics)
+
