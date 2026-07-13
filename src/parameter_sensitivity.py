@@ -47,6 +47,7 @@ def main() -> None:
             long_window=long_window,
             transaction_cost=TRANSACTION_COST,
             return_column="total_return",
+            signal_price_column="total_return_equity",
         )
 
         in_sample, out_of_sample = split_by_date(
@@ -87,3 +88,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
