@@ -77,6 +77,7 @@ Requirements:
 - 实际日期范围：以数据验证输出为准
 - 当前价格处理：不复权
 - 原始文件：`data/raw/510300_unadjusted_20120101_20251231_20260713.csv`
+- 原始文件 SHA256：`BD41191E8D6C1659C6E7F27F145EFF5E298E6381B6CFEA6AFDCFA43C97919238`
 - 标准化候选文件：`data/processed/510300_unadjusted.csv`
 
 当前文件只作为正式数据候选，不作为最终回测输入。
