@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from src.equity_normalization import normalize_period_equity
 from src.moving_average_strategy import run_moving_average_strategy
 from src.performance import calculate_performance
 from src.split_sample import split_by_date
@@ -54,15 +55,19 @@ def evaluate_period(
     result: pd.DataFrame,
     period_name: str,
 ) -> None:
+    normalized_result = normalize_period_equity(result)
+
     strategy_metrics = calculate_performance(
-        result["net_strategy_return"]
+        normalized_result["net_strategy_return"]
     )
 
     benchmark_metrics = calculate_performance(
-        result["buy_hold_return"]
+        normalized_result["buy_hold_return"]
     )
 
-    trade_statistics = calculate_trade_statistics(result)
+    trade_statistics = calculate_trade_statistics(
+        normalized_result
+    )
 
     print(f"\n{'=' * 60}")
     print(period_name)
@@ -70,11 +75,29 @@ def evaluate_period(
 
     print(
         "date range:",
-        result["Date"].min().date(),
+        normalized_result["Date"].min().date(),
         "->",
-        result["Date"].max().date(),
+        normalized_result["Date"].max().date(),
     )
-    print("rows:", len(result))
+    print("rows:", len(normalized_result))
+
+    print("\nNormalized equity:")
+    print(
+        "strategy first equity:",
+        f"{normalized_result['normalized_net_strategy_equity'].iloc[0]:.4f}",
+    )
+    print(
+        "strategy final equity:",
+        f"{normalized_result['normalized_net_strategy_equity'].iloc[-1]:.4f}",
+    )
+    print(
+        "benchmark first equity:",
+        f"{normalized_result['normalized_buy_hold_equity'].iloc[0]:.4f}",
+    )
+    print(
+        "benchmark final equity:",
+        f"{normalized_result['normalized_buy_hold_equity'].iloc[-1]:.4f}",
+    )
 
     print("\nStrategy metrics:")
     print(strategy_metrics)
