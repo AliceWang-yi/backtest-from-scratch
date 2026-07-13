@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 import pandas as pd
 
@@ -6,6 +6,7 @@ from src.moving_average_strategy import run_moving_average_strategy
 from src.performance import calculate_performance
 from src.split_sample import split_by_date
 from src.total_return import calculate_total_return
+from src.trade_statistics import calculate_trade_statistics
 
 
 PRICE_PATH = Path("data/processed/510300_unadjusted.csv")
@@ -15,6 +16,38 @@ SPLIT_DATE = "2021-01-01"
 SHORT_WINDOW = 20
 LONG_WINDOW = 60
 TRANSACTION_COST = 0.001
+
+
+def print_trade_statistics(
+    statistics: dict[str, int | float],
+) -> None:
+    print("\nTrade statistics:")
+    print("buy count:", statistics["buy_count"])
+    print("sell count:", statistics["sell_count"])
+    print(
+        "complete trade count:",
+        statistics["complete_trade_count"],
+    )
+    print(
+        "average position:",
+        f"{statistics['average_position']:.2%}",
+    )
+    print(
+        "days in market:",
+        statistics["days_in_market"],
+    )
+    print(
+        "total turnover:",
+        f"{statistics['total_turnover']:.4f}",
+    )
+    print(
+        "annualized turnover:",
+        f"{statistics['annualized_turnover']:.4f}",
+    )
+    print(
+        "total transaction cost:",
+        f"{statistics['total_transaction_cost']:.4f}",
+    )
 
 
 def evaluate_period(
@@ -29,7 +62,12 @@ def evaluate_period(
         result["buy_hold_return"]
     )
 
-    print(f"\n{period_name}")
+    trade_statistics = calculate_trade_statistics(result)
+
+    print(f"\n{'=' * 60}")
+    print(period_name)
+    print("=" * 60)
+
     print(
         "date range:",
         result["Date"].min().date(),
@@ -43,6 +81,8 @@ def evaluate_period(
 
     print("\nBuy-and-hold metrics:")
     print(benchmark_metrics)
+
+    print_trade_statistics(trade_statistics)
 
 
 def main() -> None:
@@ -75,6 +115,21 @@ def main() -> None:
         split_date=SPLIT_DATE,
     )
 
+    print("\nBacktest parameters")
+    print("-" * 60)
+    print("short window:", SHORT_WINDOW)
+    print("long window:", LONG_WINDOW)
+    print(
+        "single-side transaction cost:",
+        f"{TRANSACTION_COST:.2%}",
+    )
+    print("split date:", SPLIT_DATE)
+
+    evaluate_period(
+        full_result,
+        period_name="Full sample",
+    )
+
     evaluate_period(
         in_sample,
         period_name="In-sample",
@@ -88,4 +143,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
