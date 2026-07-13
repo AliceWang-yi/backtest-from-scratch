@@ -2,6 +2,10 @@
 
 import pandas as pd
 
+from src.backtest_summary import (
+    build_backtest_summary,
+    save_backtest_summary,
+)
 from src.equity_normalization import normalize_period_equity
 from src.moving_average_strategy import run_moving_average_strategy
 from src.performance import calculate_performance
@@ -12,6 +16,9 @@ from src.trade_statistics import calculate_trade_statistics
 
 PRICE_PATH = Path("data/processed/510300_unadjusted.csv")
 DIVIDEND_PATH = Path("data/dividends_510300.csv")
+SUMMARY_OUTPUT_PATH = Path(
+    "outputs/tables/backtest_summary.csv"
+)
 
 SPLIT_DATE = "2021-01-01"
 SHORT_WINDOW = 20
@@ -60,11 +67,9 @@ def evaluate_period(
     strategy_metrics = calculate_performance(
         normalized_result["net_strategy_return"]
     )
-
     benchmark_metrics = calculate_performance(
         normalized_result["buy_hold_return"]
     )
-
     trade_statistics = calculate_trade_statistics(
         normalized_result
     )
@@ -113,7 +118,6 @@ def main() -> None:
         PRICE_PATH,
         parse_dates=["Date"],
     )
-
     dividends = pd.read_csv(
         DIVIDEND_PATH,
         parse_dates=["ExDate"],
@@ -152,15 +156,30 @@ def main() -> None:
         full_result,
         period_name="Full sample",
     )
-
     evaluate_period(
         in_sample,
         period_name="In-sample",
     )
-
     evaluate_period(
         out_of_sample,
         period_name="Out-of-sample",
+    )
+
+    summary = build_backtest_summary(
+        [
+            ("full_sample", full_result),
+            ("in_sample", in_sample),
+            ("out_of_sample", out_of_sample),
+        ]
+    )
+
+    save_backtest_summary(
+        summary,
+        SUMMARY_OUTPUT_PATH,
+    )
+
+    print(
+        f"\nSaved summary to: {SUMMARY_OUTPUT_PATH}"
     )
 
 
