@@ -33,10 +33,14 @@ def calculate_performance(
             / excess_volatility
             * np.sqrt(TRADING_DAYS)
         )
-
+    equity_curve = (1 + clean_returns).cumprod()
+    running_max = equity_curve.cummax()
+    drawdown = equity_curve / running_max - 1
+    max_drawdown = drawdown.min()
     return {
         "annual_return": annual_return,
         "annual_volatility": annual_volatility,
         "sharpe_ratio": sharpe_ratio,
+        "max_drawdown": max_drawdown,
     }
 

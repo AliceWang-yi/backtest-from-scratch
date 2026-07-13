@@ -27,7 +27,10 @@ def run_moving_average_strategy(
     result["daily_return"] = (
         result["Close"].pct_change().fillna(0.0)
     )
-
+    result["buy_hold_return"] = result["daily_return"]
+    result["buy_hold_equity"] = (
+        1 + result["buy_hold_return"]
+    ).cumprod()
     result["strategy_return"] = (
         result["position"] * result["daily_return"]
     )
@@ -53,20 +56,36 @@ if __name__ == "__main__":
     prices = pd.read_csv(DATA_PATH, parse_dates=["Date"])
 
     result = run_moving_average_strategy(prices)
+    from src.performance import calculate_performance
 
     print(
         result[
-            [
+            ["buy_hold_return",
+             "buy_hold_equity",
                 "Date",
                 "Close",
                 "signal",
                 "position",
                 "daily_return",
                 "turnover",
+                "buy_hold_return",
+                "buy_hold_equity",
                 "cost",
                 "net_strategy_return",
                 "net_strategy_equity",
             ]
         ]
     )
+    strategy_metrics = calculate_performance(
+        result["net_strategy_return"]
+    )
+    benchmark_metrics = calculate_performance(
+        result["buy_hold_return"]
+    )
+
+    print("\nStrategy metrics:")
+    print(strategy_metrics)
+
+    print("\nBuy-and-hold metrics:")
+    print(benchmark_metrics)
 
