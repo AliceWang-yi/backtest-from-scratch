@@ -2,3 +2,4 @@ pandas
 numpy
 matplotlib
 pytest
+akshare==1.18.64
